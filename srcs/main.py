@@ -1,6 +1,8 @@
 from srcs.parser import parse_args, validate_args
 import json
 from srcs.LLMTranslator import LLMTranslator
+from srcs.Trie import TokenTrie
+from srcs.FunctionDefinition import FunctionDefinition
 
 
 def main():
@@ -14,14 +16,27 @@ def main():
 
     translator = LLMTranslator('cpu')
 
-    func_name_list = [f.name for f in data['functions']]
-    func_tokens = {f: translator.llm.encode(f).tolist()[0]
-                   for f in func_name_list}
+    func_info = '\n\n'.join(f.info_message()
+                            for f in data['functions'])
+
+    trie = TokenTrie()
+    for func in data['functions']:
+        tokens = translator.llm.encode(func.name).tolist()[0]
+        trie.insert(func.name, tokens)
+
+    trie.insert('None', translator.llm.encode('None').tolist()[0])
 
     for prompt in data['prompts']:
-        translator.request_func_name(prompt.prompt,
-                                     data['functions'],
-                                     func_tokens)
+        func_name = translator.request_func_name(prompt.prompt,
+                                                 func_info,
+                                                 trie)
+
+        func = FunctionDefinition.get_func(data['functions'], func_name)
+        if not func:
+            print('Not a func.')
+            break
+
+        translator.request_parameters(prompt.prompt, func)
 
 
 if __name__ == "__main__":

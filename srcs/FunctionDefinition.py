@@ -31,6 +31,14 @@ class FunctionDefinition(BaseModel):
             parameters += f'"{par}"({t.type}) '
 
         return (f'- Function name: {self.name}\n'
-                f'- Descritpion: {self.description}\n'
+                f'- Description: {self.description}\n'
                 f'- Parameters: {parameters}\n'
                 f'- Returns: {self.returns.type}')
+
+    @staticmethod
+    def get_func(funcs: list['FunctionDefinition'],
+                 func_name: str) -> 'FunctionDefinition | None':
+        for f in funcs:
+            if f.name == func_name:
+                return f
+        return None
