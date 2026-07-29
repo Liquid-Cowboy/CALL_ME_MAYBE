@@ -16,6 +16,8 @@ def main():
 
     translator = LLMTranslator('cpu')
 
+    print(list(translator.vocab.items())[0])
+
     func_info = '\n\n'.join(f.info_message()
                             for f in data['functions'])
 

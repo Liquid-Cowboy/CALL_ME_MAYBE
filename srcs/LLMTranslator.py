@@ -2,11 +2,16 @@ from llm_sdk import Small_LLM_Model
 from srcs.Trie import TokenTrie
 from srcs.FunctionDefinition import FunctionDefinition
 import re
+import json
 
 
 class LLMTranslator:
     def __init__(self, device: str | None = None):
         self.llm = Small_LLM_Model(device=device)
+
+        vocab_path = self.llm.get_path_to_vocab_file()
+        with open(vocab_path, 'r', encoding='utf-8') as f:
+            self.vocab = json.load(f)
 
     def request_func_name(self, prompt: str, func_info: str,
                           trie: TokenTrie) -> str:
@@ -179,3 +184,6 @@ class LLMTranslator:
         print(output)
 
         return output
+
+    def encode():
+        pass
