@@ -13,6 +13,14 @@ class LLMTranslator:
         with open(vocab_path, 'r', encoding='utf-8') as f:
             self.vocab = json.load(f)
 
+        merges_path = self.llm.get_path_to_merges_file()
+        with open(merges_path, 'r', encoding='utf-8') as f:
+            self.merges = f
+
+        tokenizer_path = self.llm.get_path_to_tokenizer_file()
+        with open(tokenizer_path, 'r', encoding='utf-8') as f:
+            self.tokenizer = json.load(f)
+
     def request_func_name(self, prompt: str, func_info: str,
                           trie: TokenTrie) -> str:
         llm = self.llm
@@ -65,13 +73,16 @@ class LLMTranslator:
                          'int': {}, 'string': {}}
         
         output = {}
+
+        par_types = set(t.type for t in func.parameters)
+        viable_params = find_parameters(prompt, par_types)
+
         for name, value in func.parameters.items():
             par_type = value.type
             match par_type:
                 case 'number':
                     self.extract_number(prompt, 'number', name,
                                         func, viable_params)
-                    print(viable_params['number']['strs'])
                 case 'float':
                     self.extract_number(prompt, 'float', name,
                                         func, viable_params)
@@ -83,6 +94,30 @@ class LLMTranslator:
                 case 'string':
                     pass
                     # extract_string(prompt, viable_params)
+
+    def find_parameters(self, prompt: str, par_types: set) -> None:
+
+        llm = self.llm
+
+        viable_params = {}
+        if {'number', 'float', 'string'} & par_types:
+            numbers = re.findall(r'-?(?:\d+\.\d+|\d+)', prompt)
+            floats =  [n for n in numbers if '.' in n]
+            ints = [n for n in numbers if '.' not in n]
+
+            viable_params['number']['strs'] = numbers
+            viable_params['number']['tokens'] = (llm.encode(n).tolist()[0]
+                                                 for n in numbers)
+
+            viable_params['float']['strs'] = floats
+            viable_params['float']['tokens'] = (llm.encode(n).tolist()[0]
+                                                for n in floats)
+
+            viable_params['int']['strs'] = ints
+            viable_params['int']['tokens'] = (llm.encode(n).tolist()[0]
+                                              for n in ints)
+ 
+            
 
     def extract_number(self, prompt: str, type: str, name: str,
                        func: FunctionDefinition, candidates: dict):
@@ -155,9 +190,6 @@ class LLMTranslator:
         strings: list = candidates[type]['strs']
         tokens: list = candidates[type]['tokens']
 
-        print(strings)
-        print(tokens)
-
         if not strings:
             return None
 
@@ -169,19 +201,14 @@ class LLMTranslator:
 
         while not trie.name_found(node):
             viable_tokens = trie.get_children(node)
-            print(f'Viable tokens: {viable_tokens}')
             logits = llm.get_logits_from_input_ids(prompt_tokens + generated)
             best = max(viable_tokens, key=lambda t: logits[t])
-            print(f'Best: {best}')
             node = trie.update(node, best)
             generated.append(best)
 
         output = strings.pop(strings.index(trie.name_found(node)))
         tokens.pop(tokens.index(generated))
-        print(strings)
-        print(tokens)
-
-        print(output)
+        print(f'Chosen parameter: {output}')
 
         return output
 
