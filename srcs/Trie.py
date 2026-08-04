@@ -55,7 +55,7 @@ class TokenTrie():
 
         Parameters:
             node -- Node to check.
-        
+
         Returns:
             - The string corresponding to the 'name'
             key or 'None' if no 'name' key exists.
@@ -69,7 +69,7 @@ class TokenTrie():
         Parameters:
             node -- Node to be set.
             token -- Key to the next node to be selected.
-        
+
         Returns:
             - The trie node corresponding to the given token key
             or 'None' if none is found.

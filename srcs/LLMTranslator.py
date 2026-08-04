@@ -3,6 +3,7 @@ from srcs.Trie import TokenTrie
 from srcs.FunctionDefinition import FunctionDefinition
 import re
 import json
+from typing import Any
 
 
 class LLMTranslator:
@@ -65,88 +66,85 @@ class LLMTranslator:
             node = trie.update(node, best)
         return llm.decode(generated)
 
-    def request_parameters(self, prompt: str, func: FunctionDefinition):
+    def request_parameters(self, prompt: str,
+                           func: FunctionDefinition) -> None:
         if not func.parameters:
             return None
 
-        viable_params = {'number': {}, 'float': {},
-                         'int': {}, 'string': {}}
-        
-        output = {}
+        par_types = set(t.type for t in func.parameters.values())
+        viable_params = self.find_parameters(prompt, par_types)
 
-        par_types = set(t.type for t in func.parameters)
-        viable_params = find_parameters(prompt, par_types)
+        print(viable_params)
 
         for name, value in func.parameters.items():
             par_type = value.type
             match par_type:
-                case 'number':
-                    self.extract_number(prompt, 'number', name,
-                                        func, viable_params)
-                case 'float':
-                    self.extract_number(prompt, 'float', name,
-                                        func, viable_params)
-                case 'int':
-                    self.extract_number(prompt, 'int', name,
-                                        func, viable_params)
-                case 'boolean':
-                    pass
-                case 'string':
-                    pass
-                    # extract_string(prompt, viable_params)
+                case 'number' | 'int' | 'float':
+                    output = self.extract_number(prompt, par_type, name,
+                                                 func, viable_params)
+                    print(type(output), output)
 
-    def find_parameters(self, prompt: str, par_types: set) -> None:
+                case _:
+                    output = self.extract_string(prompt, name, func,
+                                                 viable_params)
+                    print(type(output), output)
+
+    def find_parameters(self, prompt: str,
+                        par_types: set) -> dict[str, dict[str, Any]]:
 
         llm = self.llm
 
         viable_params = {}
         if {'number', 'float', 'string'} & par_types:
             numbers = re.findall(r'-?(?:\d+\.\d+|\d+)', prompt)
-            floats =  [n for n in numbers if '.' in n]
+            floats = [n for n in numbers if '.' in n]
             ints = [n for n in numbers if '.' not in n]
 
+            viable_params['number'] = {}
             viable_params['number']['strs'] = numbers
-            viable_params['number']['tokens'] = (llm.encode(n).tolist()[0]
-                                                 for n in numbers)
+            viable_params['number']['tokens'] = [llm.encode(n).tolist()[0]
+                                                 for n in numbers]
 
+            viable_params['float'] = {}
             viable_params['float']['strs'] = floats
-            viable_params['float']['tokens'] = (llm.encode(n).tolist()[0]
-                                                for n in floats)
+            viable_params['float']['tokens'] = [llm.encode(n).tolist()[0]
+                                                for n in floats]
 
+            viable_params['int'] = {}
             viable_params['int']['strs'] = ints
-            viable_params['int']['tokens'] = (llm.encode(n).tolist()[0]
-                                              for n in ints)
- 
-            
+            viable_params['int']['tokens'] = [llm.encode(n).tolist()[0]
+                                              for n in ints]
+
+        if 'string' in par_types:
+            strs = re.findall(r'\b\w+\b', prompt)
+            quoted_strs = re.findall(r'[\'"]\s*(.*?)\s*[\'"]', prompt)
+            strs = [s for s in strs if s not in quoted_strs]
+
+            print(f'Quoted strings: {quoted_strs}')
+            print(f'other strings: {strs}')
+
+            viable_params['string'] = {}
+            viable_params['string']['strs'] = strs
+            viable_params['string']['tokens'] = [llm.encode(s).tolist()[0]
+                                                 for s in strs]
+
+            viable_params['quoted_str'] = {}
+            viable_params['quoted_str']['strs'] = quoted_strs
+            viable_params['quoted_str']['tokens'] = [llm.encode(s).tolist()[0]
+                                                     for s in quoted_strs]
+
+        return viable_params
 
     def extract_number(self, prompt: str, type: str, name: str,
-                       func: FunctionDefinition, candidates: dict):
+                       func: FunctionDefinition,
+                       candidates: dict) -> None | int | float:
         llm = self.llm
 
-        if candidates.get('number'):
-            matches = candidates.get('number', {})
-        else:
-            matches = re.findall(r'-?(?:\d+\.\d+|\d+)', prompt)
-            if not matches:
-                return None
-            candidates['number']['strs'] = matches
-            candidates['number']['tokens'] = [llm.encode(n).tolist()[0]
-                                              for n in matches]
-        match type:
-            case 'number':
-                pass
+        matches = candidates.get(type, {}).get('strs')
+        matches_tok = candidates.get(type, {}).get('tokens')
 
-            case 'int':
-                matches = [m for m in matches if '.' not in m]
-                candidates['int']['strs'] = matches
-                candidates['int']['tokens'] = [llm.encode(n).tolist()[0]
-                                                for n in matches]
-
-            case 'float':
-                matches = [m for m in matches if '.' in m]
-                candidates['float']['strs'] = matches
-                candidates['float']['tokens'] = [llm.encode(n).tolist()[0]
-                                                    for n in matches]
+        if not matches:
+            return None
 
         base_prompt = ('<|system|>\n'
                        'You are a number selector.\n\n'
@@ -187,14 +185,8 @@ class LLMTranslator:
         prompt_tokens = llm.encode(base_prompt).tolist()[0]
         trie = TokenTrie()
 
-        strings: list = candidates[type]['strs']
-        tokens: list = candidates[type]['tokens']
-
-        if not strings:
-            return None
-
-        for i in range(len(strings)):
-            trie.insert(strings[i], tokens[i])
+        for i in range(len(matches)):
+            trie.insert(matches[i], matches_tok[i])
 
         node = trie.root
         generated = []
@@ -206,11 +198,87 @@ class LLMTranslator:
             node = trie.update(node, best)
             generated.append(best)
 
-        output = strings.pop(strings.index(trie.name_found(node)))
-        tokens.pop(tokens.index(generated))
-        print(f'Chosen parameter: {output}')
+        output = matches.pop(matches.index(trie.name_found(node)))
+        matches_tok.pop(matches_tok.index(generated))
 
-        return output
+        if type == 'number':
+            return float(output) if '.' in output else int(output)
+        if type == 'float':
+            return float(output)
+        return int(output)
+
+    def extract_string(self, prompt: str, name: str,
+                       func: FunctionDefinition,
+                       candidates: dict) -> str | None:
+        llm = self.llm
+
+        matches = candidates.get('quoted_str', {}).get('strs')
+        matches_tok = candidates.get('quoted_str', {}).get('tokens')
+
+        if not matches:
+            matches = candidates.get('string', {}).get('strs')
+            matches_tok = candidates.get('string', {}).get('tokens')
+
+        if not matches:
+            return None
+
+        trie = TokenTrie()
+        for i in range(len(matches)):
+            trie.insert(matches[i], matches_tok[i])
+
+        full_prompt = ('<|system|>\n'
+                       'You are a string selector.\n\n'
+                       'Given:\n'
+                       '- the function info,\n'
+                       '- a user prompt,\n'
+                       '- a parameter name,\n'
+                       '- a list of available strings,\n'
+                       'select the string that best matches the '
+                       'requested parameter.\n\n'
+                       'Rules:\n'
+                       '- Output exactly one string.\n'
+                       '- The output must be one of the available '
+                       'strings.\n'
+                       '- Do NOT output anything else.\n\n'
+                       'Use:\n'
+                       '1. the user prompt,\n'
+                       '2. the function description,\n'
+                       '3. the parameter name.\n\n'
+                       'Examples:\n\n'
+                       'Prompt: "Say hi to Matt."\n'
+                       'Result: "Matt"\n\n'
+                       'Prompt: "Greet Joe."\n'
+                       'Result: "Joe"\n\n'
+                       'Prompt: "Reverse the word "apple"."\n'
+                       'Result: "apple"\n\n'
+                       'Prompt: "Replace every "en" with 9 in the phrase '
+                       '"They were enlightened english men.".\n'
+                       'Result:\n'
+                       '- source string: "They were enlightened '
+                       'english men."\n'
+                       '- regex: "en"\n'
+                       '- replacement: "9"\n\n'
+                       '<|assistant|>\n\n'
+                       f'Function info:\n{func.info_message()}\n\n'
+                       f'Available strings:\n{matches}\n\n'
+                       f'Requested parameter: "{name}"\n\n'
+                       '<|user|>\n'
+                       f'Prompt: "{prompt}".\n\n'
+                       '<|assistant|>\nSelected parameter: ')
+
+        prompt_tokens = llm.encode(full_prompt).tolist()[0]
+        node = trie.root
+        generated = []
+
+        while not trie.name_found(node):
+            viable_tokens = trie.get_children(node)
+            logits = llm.get_logits_from_input_ids(prompt_tokens + generated)
+            best = max(viable_tokens, key=lambda t: logits[t])
+            node = trie.update(node, best)
+            generated.append(best)
+
+        matches_tok.pop(matches_tok.index(generated))
+        return matches.pop(matches.index(trie.name_found(node)))
 
     def encode():
         pass
