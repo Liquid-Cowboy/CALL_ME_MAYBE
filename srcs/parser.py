@@ -6,6 +6,7 @@ from srcs.FunctionDefinition import FunctionDefinition
 from pydantic import ValidationError
 
 
+
 def parse_args() -> dict[str, Any]:
     """Defines valid arguments to be parsed by using
     argparse.ArgumentParser()

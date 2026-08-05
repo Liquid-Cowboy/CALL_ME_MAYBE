@@ -3,10 +3,13 @@ import json
 from srcs.LLMTranslator import LLMTranslator
 from srcs.Trie import TokenTrie
 from srcs.FunctionDefinition import FunctionDefinition
+from srcs.dump_json import dump_json
 
 
 def main():
     args = parse_args()
+
+    data = {}
     try:
         data = validate_args(args)
     except (FileNotFoundError, json.JSONDecodeError) as e:
@@ -22,29 +25,41 @@ def main():
     func_info = '\n\n'.join(f.info_message()
                             for f in data['functions'])
 
+    functions = data.get('functions', [])
+    prompts = [p.prompt for p in data.get('prompts', [])]
+
     func_trie = TokenTrie()
-    for func in data['functions']:
+    for func in functions:
         tokens = translator.llm.encode(func.name).tolist()[0]
         func_trie.insert(func.name, tokens)
 
     func_trie.insert('None', translator.llm.encode('None').tolist()[0])
 
-    for prompt in data['prompts']:
-        if not prompt.prompt.strip():
+    entry = []
+
+    for prompt in prompts:
+        if not prompt.strip():
             continue
-        func_name = translator.request_func_name(prompt.prompt,
+        func_name = translator.request_func_name(prompt,
                                                  func_info,
                                                  func_trie)
 
-        func = FunctionDefinition.get_func(data['functions'], func_name)
+        func = FunctionDefinition.get_func(functions, func_name)
         if not func:
             print('Not a func.')
             break
 
-        print(f'Prompt: {prompt.prompt}.')
+        print(f'Prompt: {prompt}.')
         print(f'Function name: {func.name}')
 
-        translator.request_parameters(prompt.prompt, func)
+        params = translator.request_parameters(prompt, func)
+        res = {
+            'prompt': prompt,
+            'name': func.name,
+            'parameters': params,
+        }
+        entry.append(res)
+    dump_json(entry, args.get('output'))
 
 
 if __name__ == "__main__":

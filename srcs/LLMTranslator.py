@@ -67,14 +67,14 @@ class LLMTranslator:
         return llm.decode(generated)
 
     def request_parameters(self, prompt: str,
-                           func: FunctionDefinition) -> None:
+                           func: FunctionDefinition) -> dict | None:
         if not func.parameters:
             return None
 
         par_types = set(t.type for t in func.parameters.values())
         viable_params = self.find_parameters(prompt, par_types)
 
-        print(viable_params)
+        res = {}
 
         for name, value in func.parameters.items():
             par_type = value.type
@@ -82,12 +82,13 @@ class LLMTranslator:
                 case 'number' | 'int' | 'float':
                     output = self.extract_number(prompt, par_type, name,
                                                  func, viable_params)
-                    print(type(output), output)
 
                 case _:
                     output = self.extract_string(prompt, name, func,
                                                  viable_params)
-                    print(type(output), output)
+            res[name] = output
+        return res
+
 
     def find_parameters(self, prompt: str,
                         par_types: set) -> dict[str, dict[str, Any]]:
@@ -117,11 +118,9 @@ class LLMTranslator:
 
         if 'string' in par_types:
             strs = re.findall(r'\b\w+\b', prompt)
-            quoted_strs = re.findall(r'[\'"]\s*(.*?)\s*[\'"]', prompt)
+            quoted_strs = re.findall(r'"([^"]*)"|\'([^\']*)\'', prompt)
+            quoted_strs = [s[0] or s[1] for s in quoted_strs]
             strs = [s for s in strs if s not in quoted_strs]
-
-            print(f'Quoted strings: {quoted_strs}')
-            print(f'other strings: {strs}')
 
             viable_params['string'] = {}
             viable_params['string']['strs'] = strs
@@ -244,20 +243,6 @@ class LLMTranslator:
                        '1. the user prompt,\n'
                        '2. the function description,\n'
                        '3. the parameter name.\n\n'
-                       'Examples:\n\n'
-                       'Prompt: "Say hi to Matt."\n'
-                       'Result: "Matt"\n\n'
-                       'Prompt: "Greet Joe."\n'
-                       'Result: "Joe"\n\n'
-                       'Prompt: "Reverse the word "apple"."\n'
-                       'Result: "apple"\n\n'
-                       'Prompt: "Replace every "en" with 9 in the phrase '
-                       '"They were enlightened english men.".\n'
-                       'Result:\n'
-                       '- source string: "They were enlightened '
-                       'english men."\n'
-                       '- regex: "en"\n'
-                       '- replacement: "9"\n\n'
                        '<|assistant|>\n\n'
                        f'Function info:\n{func.info_message()}\n\n'
                        f'Available strings:\n{matches}\n\n'
