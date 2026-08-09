@@ -24,8 +24,12 @@ def main():
 
         decoder = LLMDecoder(parser.model_name)
         import json
-        with open(decoder.llm.get_path_to_vocab_file(), 'r',encoding='utf-8') as f:
-            print(json.load(f))
+        data = {}
+        with open(decoder.llm.get_path_to_tokenizer_file(), 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        with open('tokenizer', 'w', encoding='utf-8') as f:
+            json.dump(data, f)
+            
 
         decoder.run_prompts(parser.prompts,
                             parser.func_defs,
