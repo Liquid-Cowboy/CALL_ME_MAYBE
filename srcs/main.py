@@ -16,24 +16,15 @@ PROMPT_PREFIX = ('<|im_start|>system\n'
 
 def main():
     try:
-        
-
         print('Parsing start...')
         parser = Parser()
         print('Parsing complete.')
 
         decoder = LLMDecoder(parser.model_name)
-        import json
-        data = {}
-        with open(decoder.llm.get_path_to_tokenizer_file(), 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        with open('tokenizer', 'w', encoding='utf-8') as f:
-            json.dump(data, f)
-            
-
         decoder.run_prompts(parser.prompts,
                             parser.func_defs,
                             PROMPT_PREFIX)
+        decoder._bpe('Hello World, my name\'s Marcos.')
 
     except ParsingError as e:
         print(f'--PARSING ERROR--\n{e}')
