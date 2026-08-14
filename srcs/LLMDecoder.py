@@ -1,6 +1,9 @@
 from llm_sdk import Small_LLM_Model
 from srcs.State import State
 import json
+from srcs.Trie import Trie
+from typing import Any
+from srcs.parsing.FuncDef import FuncDef
 
 
 class LLMDecoder():
@@ -19,17 +22,30 @@ class LLMDecoder():
                   'r', encoding='utf-8') as f:
             self.vocab = dict(json.load(f))
             self.rev_vocab = {x: y for y, x in self.vocab.items()}
-        self.state = State.EXPECT_START
 
     def run_prompts(self, prompts: list,
-                    funcs: dict, prefix: str) -> None:
+                    funcs: dict, prefix: str) -> list[dict]:
+        llm = self.llm
+
         infos = '\n\n'.join([f.get_func_info() for f in funcs.values()])
+
         full_prompt = (prefix + infos +
                        '\n<|im_end|>\n\n<|im_start|>user\nprompt: ')
-        prompt_tokens = self.llm.encode(full_prompt).flatten().tolist()
+
+        prompt_tokens = llm.encode(full_prompt)
+        if hasattr(prompt_tokens, 'flatten'):
+            prompt_tokens = prompt_tokens.flatten()
+        prompt_tokens = prompt_tokens.tolist()
+
+        func_name_tokens = {n: llm.encode(n).tolist()[0] for n in funcs.keys()}
+
+        res = []
+
         for prompt in prompts:
             prompt = prompt.prompt
-            self.decode_prompt(prompt, prompt_tokens, funcs)
+            res.append(self.decode_prompt(prompt, prompt_tokens,
+                                          funcs, func_name_tokens))
+        return res
 
     def _to_unicode(self) -> dict:
         """
@@ -58,28 +74,118 @@ class LLMDecoder():
         for c in input:
             new_in.append(self.bytes.get(ord(c), ''))
 
-
     def decode_prompt(self, prompt: str,
-                      prefix_ids: list[int], funcs: dict) -> None:
-        from srcs.Trie import Trie
+                      prefix_ids: list[int],
+                      funcs: dict,
+                      func_name_tokens: dict[str, list[int]]) -> None:
+
         llm = self.llm
+        encode = llm.encode
+
         ids = prefix_ids.copy()
-        rest = (f'"{prompt}"\n<|im_end|>\n\n'
+        prefix = (f'"{prompt}"\n<|im_end|>\n\n'
                 '<|im_start|>assistant\n'
                 'result:\n')
 
-        ids.extend(llm.encode(rest).flatten().tolist())
-        while True:
-            available = get_available_strings() # returns an array of token arrays
-            trie = Trie(available)
-            generated = []
-            if available:
-                while trie.get_children() is not None:
-                    token_ids = trie.get_children()
-                    logits = llm.get_logits_from_input_ids(ids + generated)
-                    best = max(token_ids, key=lambda t: logits[t])
-                    trie.move_up(best)
-                    generated.append(best)
-                    print(llm.decode(best), end='', flush=True)
-            
+        res = ('{\n'
+                  '  "prompt": "' + prompt + '",\n'
+                  '  "name": ')
+        print(res, end='', flush=True)
+        prefix += res
 
+        added_tokens = encode(prefix)
+        if hasattr(added_tokens, 'flatten'):
+            added_tokens = added_tokens.flatten()
+
+        ids.extend(added_tokens.tolist())
+
+        func_res = self.decode_func_name(ids, func_name_tokens)
+        func_name = func_res.get('name', '')
+
+        separator = ',\n  "parameters": {'
+        print(separator, end='', flush=True)
+        ids.extend(encode('"' + func_name + '"' + separator).tolist()[0])
+        param_string = self.decode_parameters(ids, funcs.get(func_name))
+        print('}\n', end='', flush=True)
+        params = self.extract_parameters(param_string, funcs.get(func_name))
+        return {
+            'prompt': prompt,
+            'name': func_name,
+            'parameters': params
+        }
+
+
+
+
+    def decode_func_name(self,
+                         gen_tokens: list[int],
+                         name_tokens: dict[str,
+                                           list[list[int]]]) -> dict[str, Any]:
+        llm = self.llm
+
+        trie = Trie(name_tokens.values())
+        generated = []
+        print('"', end='', flush=True)
+
+        while trie.get_children() is not None:
+            available = trie.get_children()
+            logits = llm.get_logits_from_input_ids(gen_tokens + generated)
+            best = max(available, key=lambda t: logits[t])
+            trie.move_up(best)
+            generated.append(best)
+            print(llm.decode(best), end='', flush=True)
+        print('"', end='', flush=True)
+        return {
+            'name': llm.decode(generated),
+            'tokens': generated,
+        }
+
+    def decode_parameters(self, ids: list[int],
+                          func: FuncDef,
+                          max_tokens: int = 100) -> str:
+
+        end = '}\n'
+        decoded_str = ''
+
+        generated = []
+
+        while end not in decoded_str and max_tokens:
+            logits = self.llm.get_logits_from_input_ids(ids + generated)
+            best = logits.index(max(logits))
+            generated.append(best)
+            max_tokens -= 1
+            decoded = self.llm.decode(best)
+            decoded_str += decoded
+
+            print(decoded, end='', flush=True)
+        return decoded_str
+
+    def extract_parameters(self, decoded_str: str, func: FuncDef) -> dict[str, Any]:
+        decoded_parts = [s.strip() for s in decoded_str.split()]
+
+        res = {}
+
+        for name, p_type in func.parameters.items():
+            p_type = p_type.type
+            for part in decoded_parts:
+                if name not in part:
+                    continue
+                value = part.split(':', maxsplit=2)[1].strip(' "\'')
+                try:
+                    match p_type:
+
+                        case 'number' | 'float':
+                            res[name] = float(value)
+
+                        case 'int':
+                            res[name] = int(value)
+
+                        case 'string':
+                            res[name] = value
+
+                        case 'boolean':
+                            res[name] = True if value.lower() == 'true' else False
+                except ValueError:
+                    res[name] = value
+
+        return res

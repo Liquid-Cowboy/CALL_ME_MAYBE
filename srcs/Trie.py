@@ -11,7 +11,8 @@ class Trie():
         for ar in token_ars:
             node = self.root
             for n in ar:
-                node.children[n] = TrieNode()
+                if not node.children.get(n):
+                    node.children[n] = TrieNode()                    
                 node = node.children.get(n)
                 if node is None:
                     break
