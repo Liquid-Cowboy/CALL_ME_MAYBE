@@ -1,5 +1,4 @@
 from llm_sdk import Small_LLM_Model
-from srcs.State import State
 import json
 from srcs.Trie import Trie
 from typing import Any
@@ -77,19 +76,18 @@ class LLMDecoder():
     def decode_prompt(self, prompt: str,
                       prefix_ids: list[int],
                       funcs: dict,
-                      func_name_tokens: dict[str, list[int]]) -> None:
+                      func_name_tokens: dict[str, list[int]]) -> dict:
 
-        llm = self.llm
-        encode = llm.encode
+        encode = self.llm.encode
 
         ids = prefix_ids.copy()
         prefix = (f'"{prompt}"\n<|im_end|>\n\n'
-                '<|im_start|>assistant\n'
-                'result:\n')
+                  '<|im_start|>assistant\n'
+                  'result:\n')
 
         res = ('{\n'
-                  '  "prompt": "' + prompt + '",\n'
-                  '  "name": ')
+               '  "prompt": "' + prompt + '",\n'
+               '  "name": ')
         print(res, end='', flush=True)
         prefix += res
 
@@ -105,7 +103,7 @@ class LLMDecoder():
         separator = ',\n  "parameters": {'
         print(separator, end='', flush=True)
         ids.extend(encode('"' + func_name + '"' + separator).tolist()[0])
-        param_string = self.decode_parameters(ids, funcs.get(func_name))
+        param_string = self.decode_parameters(ids)
         print('}\n', end='', flush=True)
         params = self.extract_parameters(param_string, funcs.get(func_name))
         return {
@@ -114,26 +112,23 @@ class LLMDecoder():
             'parameters': params
         }
 
-
-
-
     def decode_func_name(self,
                          gen_tokens: list[int],
                          name_tokens: dict[str,
-                                           list[list[int]]]) -> dict[str, Any]:
+                                           list[int]]) -> dict[str, Any]:
         llm = self.llm
 
-        trie = Trie(name_tokens.values())
+        trie = Trie(list(name_tokens.values()))
         generated = []
         print('"', end='', flush=True)
 
-        while trie.get_children() is not None:
+        while trie.get_children():
             available = trie.get_children()
             logits = llm.get_logits_from_input_ids(gen_tokens + generated)
             best = max(available, key=lambda t: logits[t])
             trie.move_up(best)
             generated.append(best)
-            print(llm.decode(best), end='', flush=True)
+            print(llm.decode([best]), end='', flush=True)
         print('"', end='', flush=True)
         return {
             'name': llm.decode(generated),
@@ -141,7 +136,6 @@ class LLMDecoder():
         }
 
     def decode_parameters(self, ids: list[int],
-                          func: FuncDef,
                           max_tokens: int = 100) -> str:
 
         end = '}\n'
@@ -154,37 +148,48 @@ class LLMDecoder():
             best = logits.index(max(logits))
             generated.append(best)
             max_tokens -= 1
-            decoded = self.llm.decode(best)
+            decoded = self.llm.decode([best])
             decoded_str += decoded
 
             print(decoded, end='', flush=True)
         return decoded_str
 
-    def extract_parameters(self, decoded_str: str, func: FuncDef) -> dict[str, Any]:
-        decoded_parts = [s.strip() for s in decoded_str.split()]
+    def extract_parameters(self, decoded_str: str,
+                           func: FuncDef | None) -> dict[str, Any]:
+
+        last_i = len(decoded_str) - 1 - decoded_str[::-1].index('}')
+
+        decoded_str = decoded_str[:last_i]
+        decoded_parts = [s.strip() for s in decoded_str.split(', "')]
 
         res = {}
+        if not func:
+            return {}
 
         for name, p_type in func.parameters.items():
             p_type = p_type.type
             for part in decoded_parts:
                 if name not in part:
                     continue
-                value = part.split(':', maxsplit=2)[1].strip(' "\'')
+
+                value = part.split(':', maxsplit=1)[1].strip(' "\'')
+
                 try:
                     match p_type:
 
                         case 'number' | 'float':
                             res[name] = float(value)
 
-                        case 'int':
+                        case 'int' | 'integer':
                             res[name] = int(value)
 
-                        case 'string':
+                        case 'boolean':
+                            res[name] = (True if value.lower() == 'true'
+                                         else False)
+
+                        case _:
                             res[name] = value
 
-                        case 'boolean':
-                            res[name] = True if value.lower() == 'true' else False
                 except ValueError:
                     res[name] = value
 
