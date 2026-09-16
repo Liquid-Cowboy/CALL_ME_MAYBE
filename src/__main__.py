@@ -1,5 +1,5 @@
-from srcs.parsing.parser import Parser, ParsingError, JSONError
-from srcs.LLMDecoder import LLMDecoder
+from src.parsing.parser import Parser, ParsingError, JSONError
+from src.LLMDecoder import LLMDecoder
 import json
 from pathlib import Path
 
@@ -16,7 +16,8 @@ PROMPT_PREFIX = ('<|im_start|>system\n'
                  'Available functions:\n')
 
 
-def main():
+def main() -> None:
+    """Deals with execution of the program."""
     try:
         print('Parsing start...')
         parser = Parser()
@@ -26,8 +27,6 @@ def main():
         output = decoder.run_prompts(parser.prompts,
                                      parser.func_defs,
                                      PROMPT_PREFIX)
-
-        decoder._bpe('Hello World, my name\'s Marcos.')
 
         output_path = Path(parser.output_path)
 

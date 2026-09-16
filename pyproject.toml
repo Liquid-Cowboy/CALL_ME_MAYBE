@@ -3,11 +3,16 @@ name = "callmemaybe"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
+    "accelerate>=1.14.0",
+    "flake8>=7.3.0",
     "llm-sdk",
-    "numpy>=2.5.2",
+    "mypy>=2.3.1",
+    "numpy>=2.2.6",
     "pydantic>=2.13.4",
+    "pytest>=9.1.1",
+    "torch==2.13.0",
 ]
 
 [tool.uv.workspace]
@@ -15,5 +20,10 @@ members = [
     "llm_sdk",
 ]
 
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/cu126"
+name = "pytorch"
+
 [tool.uv.sources]
 llm-sdk = { workspace = true }
+torch = { index = "pytorch" }

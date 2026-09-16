@@ -1,22 +1,48 @@
 from typing import Any
+from src.parsing.FuncDef import FuncDef
+from src.parsing.Prompt import Prompt
+from pydantic import ValidationError
 
 
 class ParsingError(Exception):
+    """Custom class for parsing errors."""
     pass
 
 
 class JSONError(Exception):
+    """Custom class for JSON related errors."""
     pass
 
 
 class Parser():
-    def __init__(self):
-        self.parser()
-        self.func_defs = {}
-        self.prompts = []
+    """
+    Utility class to handle the parsing and validation
+    of CLI arguments, function definitions and prompts.
+    """
+    def __init__(self, args: list[str] | None = None) -> None:
+        """
+        Instances the class with default atributes.
+
+        Parameters:
+            args: list of possible arguments the CLI can accept
+
+        Atributes:
+            self.func_defs: mapping of function names to FuncDefs objs
+            self.prompts: list of prompt objs to be ran through
+
+        """
+        self.parser(args)
+        self.func_defs: dict[str, FuncDef] = {}
+        self.prompts: list[Prompt] = []
         self.validator()
 
-    def parser(self) -> None:
+    def parser(self, raw_args: list[str] | None = None) -> None:
+        """
+        Parses the CLI arguments using argparse.
+
+        Arguments:
+            raw_args: list of arguments to be parsed
+        """
 
         import argparse as ap
 
@@ -42,7 +68,7 @@ class Parser():
         parser.add_argument(
             '--output',
             help='Path to the output JSON file.',
-            default='data/output/function_calls.json'
+            default='data/output/function_calling_results.json'
         )
 
         parser.add_argument(
@@ -51,16 +77,14 @@ class Parser():
             default='Qwen/Qwen3-0.6B'
         )
 
-        args = parser.parse_args()
+        args = parser.parse_args(args=raw_args)
         self.func_def_path = args.functions_definition
         self.input_path = args.input
         self.output_path = args.output
         self.model_name = args.model
 
     def validator(self) -> None:
-        from srcs.parsing.FuncDef import FuncDef
-        from srcs.parsing.Prompt import Prompt
-        from pydantic import ValidationError
+        """Validates every function definition and prompt."""
 
         errors = [(f'Input - <{self.input_path}>\n'
                    f'Functions Definition - <{self.func_def_path}>')]
@@ -116,6 +140,15 @@ class Parser():
 
     @staticmethod
     def load_json(path: str) -> Any:
+        """
+        Utility function to load JSONs and raise
+        apropriate errors.
+
+        Parameters:
+            path: path to JSON file
+
+        Returns: Any JSON compatible obj
+        """
         import json
 
         try:
