@@ -63,6 +63,8 @@ make debug      # run under pdb
 make clean      # remove __pycache__ / .mypy_cache
 make lint       # flake8 . && mypy . (project's required flags)
 make lint-strict # flake8 . && mypy . --strict
+make tests      # executes test suite
+make clean_output # cleans all caches and output files
 ```
 
 ## Resources
@@ -100,7 +102,7 @@ Constrained decoding is applied in two different ways depending on which part of
 
 ## Performance analysis
 
-*`<TODO: fill in with your own measurements — wall-clock time to process the full test set, and the fraction of prompts where the correct function + correct parameter values were produced.>`*
+Takes on average 4'30 minutes to run through the entire default prompts. It solves almost every prompt but it has some trouble with format templates.
 
 By construction:
 - **Function selection is 100% schema-valid**: the trie constraint makes it structurally impossible to emit a function name that isn't in `functions_definition.json`.
@@ -114,7 +116,8 @@ Another difficult problem was figuring out how the LLM's pre-tokenization turned
 
 ## Testing strategy
 
-*`<TODO: describe how you validated the implementation — e.g. manual runs against the provided function_calling_tests.json / functions_definition.json examples, edge cases tried (empty strings, large numbers, ambiguous prompts, multi-parameter functions), and any pytest/unittest suite you wrote (not graded, but recommended by the subject).>`*
+To test the program, I mainly used the default input data, but other inputs were tried as well such as empty strings, large numbers and ambiguous or more complex prompts. The LLM still tries to find a way to answer each and every prompt, having trouble only with template driven prompts.
+
 
 ## Example usage
 

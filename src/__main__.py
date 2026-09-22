@@ -19,9 +19,7 @@ PROMPT_PREFIX = ('<|im_start|>system\n'
 def main() -> None:
     """Deals with execution of the program."""
     try:
-        print('Parsing start...')
         parser = Parser()
-        print('Parsing complete.')
 
         decoder = LLMDecoder(parser.model_name)
         output = decoder.run_prompts(parser.prompts,
@@ -38,6 +36,8 @@ def main() -> None:
         print(f'--PARSING ERROR--\n{e}')
     except JSONError as e:
         print(f'--JSON ERROR--\n\n{e}')
+    except Exception as e:
+        print(f'Error: {e}')
 
 
 if __name__ == "__main__":

@@ -303,6 +303,6 @@ class LLMDecoder():
                             res[name] = value
 
                 except ValueError:
-                    res[name] = ''
+                    return {}
 
         return res
